@@ -82,22 +82,33 @@ final class Controller: NSObject {
 
     /// Synced lyrics from LRCLIB (free, no key). Spotify's own lyrics aren't reachable from outside.
     private func fetchLyrics(_ np: NowPlaying) {
-        var c = URLComponents(string: "https://lrclib.net/api/search")!
-        c.queryItems = [.init(name: "track_name", value: np.title), .init(name: "artist_name", value: np.artist)]
-        var req = URLRequest(url: c.url!)
-        req.setValue("MusicWidget/1.1 (personal desktop widget)", forHTTPHeaderField: "User-Agent")
-        URLSession.shared.dataTask(with: req) { data, _, _ in
-            struct Hit: Decodable { let duration: Double?; let syncedLyrics: String? }
-            let hits = (try? JSONDecoder().decode([Hit].self, from: data ?? Data())) ?? []
-            let gap = { (h: Hit) in abs((h.duration ?? 0) - np.duration) }
-            // Another cut of the song (radio edit, live) would drift out of sync, so require a close duration.
-            let best = hits.filter { $0.syncedLyrics != nil && gap($0) <= 5 }.min { gap($0) < gap($1) }
-            let lines = best?.syncedLyrics.map(Self.parseLRC) ?? []
+        struct Hit: Decodable { let duration: Double?; let syncedLyrics: String? }
+        let found = { (lrc: String?) in
+            let lines = lrc.map(Self.parseLRC) ?? []
             DispatchQueue.main.async {
                 guard var cur = self.last, (cur.title, cur.artist) == (np.title, np.artist), !lines.isEmpty else { return }
                 cur.lyrics = lines; self.last = cur; cur.save(); self.reload()
             }
-        }.resume()
+        }
+        // Exact match on album + duration first: search also returns re-uploads whose timings are seconds off.
+        lrclib("get", ["track_name": np.title, "artist_name": np.artist, "album_name": np.album,
+                       "duration": String(Int(np.duration.rounded()))]) { data in
+            if let lrc = (try? JSONDecoder().decode(Hit.self, from: data))?.syncedLyrics { return found(lrc) }
+            self.lrclib("search", ["track_name": np.title, "artist_name": np.artist]) { data in
+                let hits = (try? JSONDecoder().decode([Hit].self, from: data)) ?? []
+                let gap = { (h: Hit) in abs((h.duration ?? 0) - np.duration) }
+                // Another cut of the song (radio edit, live) would drift out of sync, so require a close duration.
+                found(hits.filter { $0.syncedLyrics != nil && gap($0) <= 5 }.min { gap($0) < gap($1) }?.syncedLyrics)
+            }
+        }
+    }
+
+    private func lrclib(_ endpoint: String, _ query: [String: String], done: @escaping (Data) -> Void) {
+        var c = URLComponents(string: "https://lrclib.net/api/\(endpoint)")!
+        c.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        var req = URLRequest(url: c.url!)
+        req.setValue("MusicWidget/1.2 (personal desktop widget)", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, _, _ in done(data ?? Data()) }.resume()
     }
 
     /// "[mm:ss.xx] text" lines → sorted lyrics. Lines without a timestamp are dropped.
