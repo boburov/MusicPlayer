@@ -59,6 +59,8 @@ macOS widgetni bir necha soniyada bir marta qayta chizadi. Bundan tashqari, fond
 2. Uni sichqoncha bilan widget ustiga torting. Yaqin kelganda o'zi joyiga yopishadi.
 3. Yopishgan kartaning tugmalari oddiy tugmadek ishlaydi.
 
+So'zlar kech yoki erta chiqsa: kursorni karta ustiga olib boring va aylantiring. Tepaga aylantirsangiz so'zlar oldinroq, pastga aylantirsangiz kechroq chiqadi (har qadam 0.25 s). Sozlama eslab qolinadi.
+
 Karta boshqa oynalar ostida turadi va joyini eslab qoladi. Widgetni boshqa joyga ko'chirsangiz, karta bo'shab qoladi: uni yana widget ustiga torting. Ilova o'chiq bo'lsa, ostidagi oddiy widget ko'rinadi.
 
 ## Qanday ishlaydi

@@ -12,7 +12,7 @@ enum Layout {
 
 /// Lines show this much before they're sung, like Spotify does, so they can be read in time.
 /// LRCLIB timestamps mark when singing starts, and some files run a second or two late.
-let lyricLead: TimeInterval = 1.0
+let lyricLead: TimeInterval = 1.5
 
 /// The line being sung at `pos` (♪ before the first one) and up to 3 lines after it.
 struct LyricsText: View {

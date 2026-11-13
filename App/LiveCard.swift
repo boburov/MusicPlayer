@@ -5,6 +5,27 @@ final class LiveState: ObservableObject {
     @Published var np: NowPlaying?
     @Published var art = NSImage(contentsOf: Shared.artURL)
     @Published var snapped = false
+    /// How early lines show. LRC files and ears differ, so the user tunes it by scrolling over the card.
+    @Published var lead = UserDefaults.standard.object(forKey: "lyricLead") as? Double ?? lyricLead {
+        didSet { UserDefaults.standard.set(lead, forKey: "lyricLead") }
+    }
+    @Published var showLead = false
+    private var scrolled: CGFloat = 0
+    private var hideLead: DispatchWorkItem?
+
+    /// Scroll up: lyrics earlier; down: later. One wheel notch or ~20pt of trackpad = 0.25s.
+    func scroll(_ e: NSEvent) {
+        scrolled += e.scrollingDeltaY
+        let step: CGFloat = e.hasPreciseScrollingDeltas ? 20 : 1
+        guard abs(scrolled) >= step else { return }
+        lead = min(5, max(-2, lead + (scrolled > 0 ? 0.25 : -0.25)))
+        scrolled = 0
+        showLead = true
+        hideLead?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showLead = false }
+        hideLead = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
 }
 
 /// macOS redraws a desktop widget only every few seconds, skips timeline entries, and stops honoring the
@@ -27,7 +48,9 @@ final class LiveCard: NSObject, NSWindowDelegate {
         // Desktop widgets sit at desktop-icon level + 2: one above them, below every app window.
         window.level = .init(Int(CGWindowLevelForKey(.desktopIconWindow)) + 3)
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        window.contentView = ClickHost(rootView: CardView(state: state, send: send))
+        let host = ClickHost(rootView: CardView(state: state, send: send))
+        host.onScroll = { [state] in state.scroll($0) }
+        window.contentView = host
         if let f = UserDefaults.standard.string(forKey: "cardFrame") { window.setFrame(NSRectFromString(f), display: false) } else { window.center() }
         window.delegate = self
         window.orderFrontRegardless()
@@ -78,6 +101,8 @@ final class LiveCard: NSObject, NSWindowDelegate {
 private final class ClickHost<V: View>: NSHostingView<V> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { true }
+    var onScroll: (NSEvent) -> Void = { _ in }
+    override func scrollWheel(with event: NSEvent) { onScroll(event) }
 }
 
 private struct CardView: View {
@@ -87,14 +112,23 @@ private struct CardView: View {
     private var lineStarts: [Date] {
         guard let np = state.np, np.isPlaying else { return [Date()] }
         let now = Date()
-        return [now] + (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - lyricLead) }.filter { $0 > now }
+        return [now] + (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - state.lead) }.filter { $0 > now }
     }
 
     var body: some View {
         // Redraws exactly when a lyric line starts (not on a fixed tick, which kept the CPU busy).
         TimelineView(.explicit(lineStarts)) { t in
-            PlayerCard(np: state.np, art: state.art, pos: (state.np?.position(at: t.date) ?? 0) + lyricLead) { action, icon in
+            PlayerCard(np: state.np, art: state.art, pos: (state.np?.position(at: t.date) ?? 0) + state.lead) { action, icon in
                 AnyView(Button { send(action) } label: { icon })
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if state.showLead {
+                Text(String(format: "So'zlar %.2f s oldin", state.lead))
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(.bottom, 24)
             }
         }
         // Snapped, the widget's own background (glass or tinted, whatever the desktop uses) shows through.
