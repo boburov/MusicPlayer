@@ -18,13 +18,23 @@ let lyricLead: TimeInterval = 1.5
 struct LyricsText: View {
     let np: NowPlaying?
     let pos: Double
+    var karaoke = false     // only the app's live card can animate; a widget is a still image
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let (now, next) = lyric {
-                Text(now)
-                    .font(.system(size: 19, weight: .bold))
-                    .lineLimit(2)
+                if karaoke, let np, let cur = np.lyrics?.last(where: { $0.t <= pos && !$0.s.isEmpty }) {
+                    // Sung until the next timestamp (an empty one marks a pause), capped so a long break doesn't stall it.
+                    let end = min(np.lyrics?.first { $0.t > cur.t }?.t ?? np.duration, cur.t + 8)
+                    KaraokeLine(text: cur.s, done: (pos - cur.t) / max(end - cur.t, 0.1),
+                                remaining: np.isPlaying ? max(end - pos, 0) : 0)
+                        // A new line, a seek or play/pause restarts the fill from the right spot.
+                        .id("\(cur.t)|\(np.isPlaying)|\(Int(np.startDate.timeIntervalSince1970 * 10))")
+                } else {
+                    Text(now)
+                        .font(.system(size: 19, weight: .bold))
+                        .lineLimit(2)
+                }
                 ForEach(Array(next.enumerated()), id: \.offset) { _, line in
                     Text(line)
                         .font(.system(size: 15, weight: .semibold))
@@ -55,6 +65,7 @@ struct PlayerCard: View {
     let np: NowPlaying?
     let art: NSImage?
     let pos: Double             // song position the lyrics are shown for
+    var karaoke = false
     /// Wraps a button's icon in the host's button: an App Intent in the widget, a direct call in the app.
     let control: (_ action: String, _ icon: AnyView) -> AnyView
     private let pad = Layout.pad
@@ -125,7 +136,7 @@ struct PlayerCard: View {
     }
 
     private var lyricsPanel: some View {
-        LyricsText(np: np, pos: pos)
+        LyricsText(np: np, pos: pos, karaoke: karaoke)
             .background(panel, in: RoundedRectangle(cornerRadius: Layout.panelRadius, style: .continuous))
             .clipShape(RoundedRectangle(cornerRadius: Layout.panelRadius, style: .continuous))
     }
@@ -140,3 +151,32 @@ struct PlayerCard: View {
     }
 }
 
+
+/// The current line fills left to right while it's sung. Core Animation runs the fill, so the card
+/// isn't redrawn per frame.
+// shortcut: a line wrapped onto 2 rows fills both rows at once; fill row by row if that looks off.
+struct KaraokeLine: View {
+    let text: String
+    let remaining: Double   // seconds until fully sung; 0 = hold still (paused)
+    @State private var progress: Double
+
+    init(text: String, done: Double, remaining: Double) {
+        self.text = text
+        self.remaining = remaining
+        _progress = State(initialValue: min(max(done, 0), 1))
+    }
+
+    var body: some View {
+        let line = Text(text).font(.system(size: 19, weight: .bold)).lineLimit(2)
+        line.opacity(0.35)
+            .overlay(alignment: .topLeading) {
+                line.mask(alignment: .leading) {
+                    GeometryReader { g in Rectangle().frame(width: g.size.width * progress) }
+                }
+            }
+            .onAppear {
+                guard remaining > 0 else { return }
+                withAnimation(.linear(duration: remaining)) { progress = 1 }
+            }
+    }
+}

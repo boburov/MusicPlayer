@@ -125,7 +125,7 @@ private struct CardView: View {
         // Redraws exactly when a lyric line starts (not on a fixed tick, which kept the CPU busy).
         TimelineView(.explicit(lineStarts)) { _ in
             // The real clock, not the entry date: an entry can be drawn late, e.g. right after uncovering.
-            PlayerCard(np: state.np, art: state.art, pos: (state.np?.position(at: Date()) ?? 0) + state.lead) { action, icon in
+            PlayerCard(np: state.np, art: state.art, pos: (state.np?.position(at: Date()) ?? 0) + state.lead, karaoke: true) { action, icon in
                 AnyView(Button { send(action) } label: { icon })
             }
         }
