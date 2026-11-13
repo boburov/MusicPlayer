@@ -22,7 +22,6 @@ struct NowPlaying: Codable, Equatable {
     var updated: Date
     var artKey: String
     var lyrics: [Lyric]? = nil
-    var liveLyrics: Bool? = nil  // the app is drawing the lyrics live over the widget's panel
 
     var startDate: Date { updated.addingTimeInterval(-position) }
     var endDate: Date { startDate.addingTimeInterval(max(duration, position, 1)) }

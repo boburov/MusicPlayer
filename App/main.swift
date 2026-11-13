@@ -7,10 +7,9 @@ import WidgetKit
 final class Controller: NSObject {
     private var last: NowPlaying? { didSet { onUpdate(last) } }
     var onUpdate: (NowPlaying?) -> Void = { _ in }
-    /// The live lyrics window sits on the widget, so the widget leaves its panel empty and skips per-line redraws.
-    var liveLyrics = false {
-        didSet { guard liveLyrics != oldValue, last != nil else { return }; last?.liveLyrics = liveLyrics; last?.save(); reload() }
-    }
+    var onArt: (NSImage?) -> Void = { _ in }
+    /// The app's live copy covers the widget, so widget reloads (a small daily budget) would be wasted.
+    var live = false { didSet { if !live && oldValue { reload() } } }
     private var preferred = "Spotify"
     private var artLoading: String?         // artKey whose download is in flight
     private var playPauseTapAt = Date.distantPast
@@ -30,12 +29,14 @@ final class Controller: NSObject {
     @objc private func spotifyChanged() { preferred = "Spotify"; refresh() }
     @objc private func musicChanged() { preferred = "Music"; refresh() }
 
-    @objc private func command(_ note: Notification) {
+    @objc private func command(_ note: Notification) { send(note.object as? String ?? "") }
+
+    func send(_ action: String) {
         let verbs = ["playpause": "playpause", "next": "next track", "previous": "previous track"]
-        guard let verb = verbs[note.object as? String ?? ""] else { return }
+        guard let verb = verbs[action] else { return }
         // Nothing running: this launches the preferred player.
         let player = last?.player ?? preferred
-        if note.object as? String == "playpause" { playPauseTapAt = Date() }
+        if action == "playpause" { playPauseTapAt = Date() }
         _ = script("tell application \"\(player)\" to \(verb)")
         // The widget waits for our next state write, so refresh fast; the player's own notification covers a slow switch.
         refresh()
@@ -50,7 +51,6 @@ final class Controller: NSObject {
             return
         }
         var np = pick.0
-        np.liveLyrics = liveLyrics
         guard Self.changed(last, np) else {
             // The live lyrics need an exact clock even when the drift is too small to spend a widget reload on.
             if let l = last, abs(l.position(at: np.updated) - np.position) > 0.3 { last?.position = np.position; last?.updated = np.updated }
@@ -75,6 +75,7 @@ final class Controller: NSObject {
             self.artLoading = nil
             if let data { try? data.write(to: Shared.artURL, options: .atomic) }
             else { try? FileManager.default.removeItem(at: Shared.artURL) }
+            self.onArt(data.flatMap(NSImage.init(data:)))
             self.last?.save(); self.reload()
         }
     }
@@ -109,7 +110,7 @@ final class Controller: NSObject {
         }.sorted { $0.t < $1.t }
     }
 
-    private func reload() { WidgetCenter.shared.reloadTimelines(ofKind: Shared.kind) }
+    private func reload() { if !live { WidgetCenter.shared.reloadTimelines(ofKind: Shared.kind) } }
 
     private func query(_ player: String) -> (NowPlaying, String)? {
         guard let id = Self.bundleIDs[player], !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty else { return nil }
@@ -185,9 +186,7 @@ private func selfCheck() {
     assert(Controller.changed(nil, a))
     let l = Controller.parseLRC("[ti:x]\n[01:02.00]\n[00:12.50] Salom dunyo\nbad")
     assert(l.count == 2 && l[0].t == 12.5 && l[0].s == "Salom dunyo" && l[1].t == 62 && l[1].s == "", "LRC parse")
-    // 360pt host window → 344pt widget; panel sits under the 127.7pt artwork row.
-    let p = LyricsOverlay.panel(NSRect(x: 0, y: 0, width: 360, height: 360))
-    assert(p.minX == 22 && p.minY == 22 && p.width == 316 && abs(p.height - 176.3) < 0.1, "overlay panel rect \(p)")
+    assert(LiveCard.widgetRect(NSRect(x: 0, y: 0, width: 360, height: 360)) == NSRect(x: 8, y: 8, width: 344, height: 344), "widget inside its host window")
 }
 #endif
 
@@ -197,10 +196,11 @@ selfCheck()
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let controller = Controller()
-let overlay = LyricsOverlay()
-controller.onUpdate = { overlay.state.np = $0 }
-overlay.onSnap = { controller.liveLyrics = $0 }
+let card = LiveCard(send: controller.send)
+controller.onUpdate = { card.state.np = $0 }
+controller.onArt = { card.state.art = $0 }
+card.onSnap = { controller.live = $0 }
 controller.start()
-overlay.snap()
+card.snap()
 try? SMAppService.mainApp.register() // start at login so the widget buttons always work
 app.run()

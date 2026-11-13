@@ -3,28 +3,32 @@ import SwiftUI
 
 final class LiveState: ObservableObject {
     @Published var np: NowPlaying?
+    @Published var art = NSImage(contentsOf: Shared.artURL)
     @Published var snapped = false
 }
 
-/// macOS redraws a desktop widget only every few seconds and skips some timeline entries, so lyrics
-/// drawn by the widget lag. The app draws them live instead, in a window snapped over the widget's panel.
-final class LyricsOverlay: NSObject, NSWindowDelegate {
+/// macOS redraws a desktop widget only every few seconds, skips timeline entries, and stops honoring the
+/// app's reloads once a small daily budget is spent. So the app draws a live copy of the widget in its
+/// own window, laid exactly over the real one; the widget underneath is only a fallback.
+final class LiveCard: NSObject, NSWindowDelegate {
     let state = LiveState()
     var onSnap: (Bool) -> Void = { _ in }
-    private let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 330, height: 170), styleMask: .borderless, backing: .buffered, defer: false)
+    // Non-activating, so pressing a button doesn't pull focus from the app being used.
+    private let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 344, height: 344),
+                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     private var settle: DispatchWorkItem?
 
-    override init() {
+    init(send: @escaping (String) -> Void) {
         super.init()
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
+        window.hidesOnDeactivate = false
         // Desktop widgets sit at desktop-icon level + 2: one above them, below every app window.
         window.level = .init(Int(CGWindowLevelForKey(.desktopIconWindow)) + 3)
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        window.isMovableByWindowBackground = true
-        window.contentView = DragHost(rootView: OverlayView(state: state))
-        if let f = UserDefaults.standard.string(forKey: "lyricsFrame") { window.setFrame(NSRectFromString(f), display: false) } else { window.center() }
+        window.contentView = ClickHost(rootView: CardView(state: state, send: send))
+        if let f = UserDefaults.standard.string(forKey: "cardFrame") { window.setFrame(NSRectFromString(f), display: false) } else { window.center() }
         window.delegate = self
         window.orderFrontRegardless()
         // Follows the widget when it moves a little, and finds it again after the widget host restarts.
@@ -38,18 +42,20 @@ final class LyricsOverlay: NSObject, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
-    /// Lands on the lyrics panel of the widget it was dropped near; anywhere else it floats with its own background.
+    /// Lands on the widget it was dropped near; anywhere else it floats and can be dragged.
     func snap() {
         let me = window.frame, frames = Self.widgetFrames()
         guard !frames.isEmpty else { return } // a full-screen app's space or Edit Widgets: keep the last state
-        let near = frames.map(Self.panel).filter { hypot($0.minX - me.minX, $0.maxY - me.maxY) < 60 }.first
+        let near = frames.map(Self.widgetRect).first { hypot($0.minX - me.minX, $0.maxY - me.maxY) < 60 }
         if let near, near != me { window.setFrame(near, display: true) }
+        // Snapped, a drag would swallow button clicks; it frees itself when the widget moves away.
+        window.isMovableByWindowBackground = near == nil
         if state.snapped != (near != nil) { state.snapped = near != nil; onSnap(near != nil) }
-        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: "lyricsFrame")
+        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: "cardFrame")
     }
 
-    /// Large desktop widget windows. Only frames are readable without screen-recording permission,
-    /// so the overlay can't tell which widget is ours: the user drops it on the right one.
+    /// Large desktop widget host windows. Only frames are readable without screen-recording permission,
+    /// so the card can't tell which widget is ours: the user drops it on the right one.
     private static func widgetFrames() -> [NSRect] {
         let host = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").map(\.processIdentifier))
         let layer = Int(CGWindowLevelForKey(.desktopIconWindow)) + 2
@@ -64,32 +70,27 @@ final class LyricsOverlay: NSObject, NSWindowDelegate {
         }
     }
 
-    /// The widget's lyrics panel inside its host window, mirroring NowPlayingView's layout.
-    // shortcut: the 8pt shadow margin around the widget was measured on macOS 27; re-measure if the overlay sits off.
-    static func panel(_ host: NSRect) -> NSRect {
-        let w = host.insetBy(dx: 8, dy: 8)
-        let side = Layout.artSide(width: w.width)
-        return NSRect(x: w.minX + Layout.pad, y: w.minY + Layout.pad,
-                      width: w.width - Layout.pad * 2, height: w.height - Layout.pad * 2 - side - Layout.gap)
-    }
+    // shortcut: the 8pt shadow margin around the widget was measured on macOS 27; re-measure if the card sits off.
+    static func widgetRect(_ host: NSRect) -> NSRect { host.insetBy(dx: 8, dy: 8) }
 }
 
-/// Lets the borderless window be dragged from anywhere, even while another app is active.
-private final class DragHost<V: View>: NSHostingView<V> {
-    override var mouseDownCanMoveWindow: Bool { true }
+/// Buttons work on the first click even though this app is never the active one.
+private final class ClickHost<V: View>: NSHostingView<V> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var mouseDownCanMoveWindow: Bool { true }
 }
 
-private struct OverlayView: View {
+private struct CardView: View {
     @ObservedObject var state: LiveState
+    let send: (String) -> Void
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.1)) { t in
-            LyricsText(np: state.np, pos: state.np?.position(at: t.date) ?? 0)
+            PlayerCard(np: state.np, art: state.art, pos: state.np?.position(at: t.date) ?? 0) { action, icon in
+                AnyView(Button { send(action) } label: { icon })
+            }
         }
-        .foregroundStyle(.white)
-        // Snapped, the widget's own panel shows through, so it matches whatever tint the desktop applies.
-        .background(state.snapped ? Color.clear : Color(white: 0.12),
-                    in: RoundedRectangle(cornerRadius: Layout.panelRadius, style: .continuous))
+        // Covers the widget's corners (measured ~27pt) so its stale content never shows around the edge.
+        .background(Layout.background, in: RoundedRectangle(cornerRadius: 28))
     }
 }

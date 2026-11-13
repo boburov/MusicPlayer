@@ -59,9 +59,8 @@ struct Provider: TimelineProvider {
         let e = current()
         guard let np = e.np, np.isPlaying else { return completion(Timeline(entries: [e], policy: .never)) }
         // One entry exactly when each lyric line starts; wake at the song's end in case the app's reload is throttled.
-        // While the app draws live lyrics over the panel, those entries would only waste redraws.
         let end = np.endDate
-        let starts = (np.liveLyrics == true ? [] : np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - lyricLead) }.filter { $0 > e.date && $0 < end }
+        let starts = (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - lyricLead) }.filter { $0 > e.date && $0 < end }
         let entries = [e] + starts.prefix(900).map { Entry(date: $0, np: np, art: e.art) }
         completion(Timeline(entries: entries, policy: .after(end.addingTimeInterval(1))))
     }
@@ -73,94 +72,14 @@ struct Provider: TimelineProvider {
 
 // MARK: - View
 
-/// Layout: artwork top-left, title pill + controls pill top-right, lyrics panel across the bottom.
 struct NowPlayingView: View {
     let entry: Entry
-    private let pad = Layout.pad
-    private let gap = Layout.gap
-    private let panel = Color.white.opacity(0.1)
 
     var body: some View {
-        GeometryReader { g in
-            let side = Layout.artSide(width: g.size.width)
-            VStack(spacing: gap) {
-                HStack(spacing: gap) {
-                    artwork
-                        .frame(width: side, height: side)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    VStack(spacing: gap) {
-                        titlePill
-                        controlsPill
-                    }
-                    .frame(height: side)
-                }
-                lyricsPanel
-            }
-            .padding(pad)
+        PlayerCard(np: entry.np, art: entry.art, pos: (entry.np?.position(at: entry.date) ?? 0) + lyricLead) { action, icon in
+            AnyView(Button(intent: PlayerCommand(action)) { icon })
         }
-        .foregroundStyle(.white)
-        .containerBackground(for: .widget) { Color(red: 0.11, green: 0.11, blue: 0.12) }
-    }
-
-    @ViewBuilder private var artwork: some View {
-        if let art = entry.art {
-            Image(nsImage: art)
-                .resizable()
-                .widgetAccentedRenderingMode(.fullColor)
-                .scaledToFill()
-        } else {
-            ZStack {
-                panel
-                Image(systemName: "music.note").font(.system(size: 40, weight: .light)).opacity(0.35)
-            }
-        }
-    }
-
-    private var titlePill: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(entry.np?.title ?? "Hech narsa chalinmayapti")
-                .font(.system(size: 15, weight: .bold))
-            if let np = entry.np {
-                Text(np.artist.isEmpty ? np.player : np.artist)
-                    .font(.system(size: 12, weight: .medium))
-                    .opacity(0.6)
-            }
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-        .padding(.horizontal, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(panel, in: Capsule())
-    }
-
-    private var controlsPill: some View {
-        let playing = entry.np?.isPlaying ?? false
-        return HStack(spacing: 0) {
-            button("previous", "backward.fill", size: 18, label: "Oldingi qo'shiq")
-            button("playpause", playing ? "pause.fill" : "play.fill", size: 24, label: playing ? "To'xtatish" : "Ijro etish")
-            button("next", "forward.fill", size: 18, label: "Keyingi qo'shiq")
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(panel, in: Capsule())
-    }
-
-    private var lyricsPanel: some View {
-        // While the app draws live lyrics over this panel, it stays empty underneath.
-        LyricsText(np: entry.np?.liveLyrics == true ? nil : entry.np,
-                   pos: (entry.np?.position(at: entry.date) ?? 0) + lyricLead)
-            .background(panel, in: RoundedRectangle(cornerRadius: Layout.panelRadius, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: Layout.panelRadius, style: .continuous))
-    }
-
-    private func button(_ action: String, _ symbol: String, size: CGFloat, label: String) -> some View {
-        Button(intent: PlayerCommand(action)) {
-            Image(systemName: symbol)
-                .font(.system(size: size))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .containerBackground(for: .widget) { Layout.background }
     }
 }
 
