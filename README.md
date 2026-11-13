@@ -5,7 +5,7 @@ macOS ish stoli uchun musiqa widgeti. Spotify yoki Apple Music'da hozir chalinay
 - albom rasmi (chap tepada);
 - qo'shiq nomi va ijrochi;
 - ⏮ ⏯ ⏭ tugmalari;
-- qo'shiq so'zlari: hozirgi qator karaoke kabi aytilishi bilan chapdan o'ngga to'lib boradi, keyingi 3 qator xira.
+- qo'shiq so'zlari: hozirgi qator karaoke kabi so'zma-so'z yumshoq yorug'lik bilan to'lib boradi, keyingi qatorga silliq o'tadi; keyingi 3 qator xira.
 
 Ikki o'lchamda ishlaydi: **Large** (kvadrat) va **Extra Large Portrait** (tik, macOS 27+).
 

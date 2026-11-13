@@ -22,19 +22,12 @@ struct LyricsText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let (now, next) = lyric {
-                if karaoke, let np, let cur = np.lyrics?.last(where: { $0.t <= pos && !$0.s.isEmpty }) {
-                    // Sung until the next timestamp (an empty one marks a pause), capped so a long break doesn't stall it.
-                    let end = min(np.lyrics?.first { $0.t > cur.t }?.t ?? np.duration, cur.t + 8)
-                    KaraokeLine(text: cur.s, done: (pos - cur.t) / max(end - cur.t, 0.1),
-                                remaining: np.isPlaying ? max(end - pos, 0) : 0)
-                        // A new line, a seek or play/pause restarts the fill from the right spot.
-                        .id("\(cur.t)|\(np.isPlaying)|\(Int(np.startDate.timeIntervalSince1970 * 10))")
-                } else {
-                    Text(now)
-                        .font(.system(size: 19, weight: .bold))
-                        .lineLimit(2)
-                }
+            if karaoke, let np, np.lyrics?.contains(where: { !$0.s.isEmpty }) == true {
+                KaraokeLyrics(np: np, pos: pos)
+            } else if let (now, next) = lyric {
+                Text(now)
+                    .font(.system(size: 19, weight: .bold))
+                    .lineLimit(2)
                 ForEach(Array(next.enumerated()), id: \.offset) { _, line in
                     Text(line)
                         .font(.system(size: 15, weight: .semibold))
@@ -152,31 +145,145 @@ struct PlayerCard: View {
 }
 
 
-/// The current line fills left to right while it's sung. Core Animation runs the fill, so the card
-/// isn't redrawn per frame.
-// shortcut: a line wrapped onto 2 rows fills both rows at once; fill row by row if that looks off.
-struct KaraokeLine: View {
-    let text: String
-    let remaining: Double   // seconds until fully sung; 0 = hold still (paused)
-    @State private var progress: Double
 
-    init(text: String, done: Double, remaining: Double) {
-        self.text = text
-        self.remaining = remaining
-        _progress = State(initialValue: min(max(done, 0), 1))
+/// Live card lyrics: the current line fills word by word with a soft glowing edge while it's sung,
+/// and lines glide up when the next one starts. Core Animation runs it; the card isn't redrawn per frame.
+struct KaraokeLyrics: View {
+    let np: NowPlaying
+    let pos: Double
+
+    var body: some View {
+        let lines = np.lyrics?.filter { !$0.s.isEmpty } ?? []
+        let cur = lines.lastIndex { $0.t <= pos }
+        let from = cur ?? -1
+        VStack(alignment: .leading, spacing: 8) {
+            if cur == nil {
+                Text("♪").font(.system(size: 19, weight: .bold)).transition(.glide)
+            }
+            ForEach(lines.indices.filter { $0 >= from && $0 <= from + 3 }, id: \.self) { k in
+                // A stable container per line: becoming current crossfades in place; only arriving/leaving glides.
+                VStack(alignment: .leading, spacing: 0) {
+                    if k == cur {
+                        // A seek or play/pause restarts the fill from the right spot.
+                        KaraokeLine(line: lines[k], end: lineEnd(lines[k]), pos: pos, playing: np.isPlaying)
+                            .id("\(np.isPlaying)|\(Int(np.startDate.timeIntervalSince1970 * 10))")
+                    } else {
+                        Text(lines[k].s).font(.system(size: 15, weight: .semibold)).lineLimit(1).opacity(0.4)
+                    }
+                }
+                .transition(.glide)
+            }
+        }
+        .animation(.spring(response: 0.55, dampingFraction: 0.9), value: cur)
+    }
+
+    /// Sung until the next timestamp (an empty one marks a pause), capped so a long break doesn't stall it.
+    private func lineEnd(_ l: Lyric) -> Double {
+        min(np.lyrics?.first { $0.t > l.t }?.t ?? np.duration, l.t + 8)
+    }
+}
+
+private extension AnyTransition {
+    /// The sung line drifts up and out; new lines rise in from below.
+    static var glide: AnyTransition {
+        // Short drifts, not full-height moves: a sung line sliding its whole height overlapped the next one.
+        .asymmetric(insertion: .offset(y: 14).combined(with: .opacity),
+                    removal: .offset(y: -18).combined(with: .opacity).animation(.easeOut(duration: 0.25)))
+    }
+}
+
+/// One line, words laid out like text and wrapped onto as many rows as needed. The line's time is
+/// shared out by word length, since LRC files only time whole lines.
+struct KaraokeLine: View {
+    let line: Lyric
+    let end: Double
+    let pos: Double
+    let playing: Bool
+
+    var body: some View {
+        let words = line.s.split(separator: " ").map(String.init)
+        let span = max(end - line.t, 0.1)
+        let total = Double(words.reduce(0) { $0 + $1.count + 1 })
+        var at = line.t
+        let timed = words.map { w -> (String, Double, Double) in
+            let d = span * Double(w.count + 1) / total
+            defer { at += d }
+            return (w, at, d)
+        }
+        return Flow {
+            ForEach(Array(timed.enumerated()), id: \.offset) { _, t in
+                KaraokeWord(word: t.0, start: t.1, duration: t.2, pos: pos, playing: playing)
+            }
+        }
+    }
+}
+
+struct KaraokeWord: View {
+    let word: String
+    let wait: Double        // seconds until this word starts filling
+    let duration: Double    // seconds left to fill; 0 = hold still
+    @State private var p: Double
+
+    init(word: String, start: Double, duration: Double, pos: Double, playing: Bool) {
+        self.word = word
+        let done = min(max((pos - start) / duration, 0), 1)
+        _p = State(initialValue: done)
+        wait = playing ? max(start - pos, 0) : 0
+        self.duration = playing && done < 1 ? duration * (1 - done) : 0
     }
 
     var body: some View {
-        let line = Text(text).font(.system(size: 19, weight: .bold)).lineLimit(2)
-        line.opacity(0.35)
-            .overlay(alignment: .topLeading) {
-                line.mask(alignment: .leading) {
-                    GeometryReader { g in Rectangle().frame(width: g.size.width * progress) }
+        let text = Text(word).font(.system(size: 19, weight: .bold))
+        text.opacity(0.35)
+            .overlay {
+                text.mask(alignment: .leading) {
+                    GeometryReader { g in
+                        // A feathered edge, so the fill drifts in like a cloud instead of a hard wipe.
+                        let soft = max(g.size.width * 0.5, 16)
+                        let full = g.size.width + soft
+                        LinearGradient(stops: [.init(color: .white, location: 0),
+                                               .init(color: .white, location: g.size.width / full),
+                                               .init(color: .clear, location: 1)],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: full)
+                            .offset(x: (p - 1) * full)
+                    }
                 }
+                .shadow(color: .white.opacity(0.55), radius: 6)
             }
             .onAppear {
-                guard remaining > 0 else { return }
-                withAnimation(.linear(duration: remaining)) { progress = 1 }
+                guard duration > 0 else { return }
+                withAnimation(.linear(duration: duration).delay(wait)) { p = 1 }
             }
+    }
+}
+
+/// Lays words out left to right and wraps them like text.
+struct Flow: SwiftUI.Layout {
+    var spacing: CGFloat = 5
+    var rowSpacing: CGFloat = 2
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout ()) -> CGSize {
+        let r = arrange(proposal.width ?? .infinity, subviews)
+        return CGSize(width: proposal.width ?? r.width, height: r.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout ()) {
+        for (i, pt) in arrange(bounds.width, subviews).points.enumerated() {
+            subviews[i].place(at: CGPoint(x: bounds.minX + pt.x, y: bounds.minY + pt.y), proposal: .unspecified)
+        }
+    }
+
+    private func arrange(_ maxWidth: CGFloat, _ subviews: LayoutSubviews) -> (points: [CGPoint], width: CGFloat, height: CGFloat) {
+        var points: [CGPoint] = [], x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, width: CGFloat = 0
+        for v in subviews {
+            let size = v.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth { x = 0; y += rowHeight + rowSpacing; rowHeight = 0 }
+            points.append(CGPoint(x: x, y: y))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            width = max(width, x - spacing)
+        }
+        return (points, width, y + rowHeight)
     }
 }
