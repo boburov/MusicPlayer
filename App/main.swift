@@ -30,8 +30,8 @@ final class Controller: NSObject {
         dnc.addObserver(self, selector: #selector(musicChanged), name: .init("com.apple.Music.playerInfo"), object: nil, suspensionBehavior: .deliverImmediately)
         dnc.addObserver(self, selector: #selector(command(_:)), name: Shared.commandNote, object: nil, suspensionBehavior: .deliverImmediately)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(refresh), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
-        // Catches seeks and anything the players don't announce.
-        Timer.scheduledTimer(timeInterval: 10, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
+        // Catches seeks fast: Spotify announces them late or not at all, and the live lyrics follow this clock.
+        Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(refresh), userInfo: nil, repeats: true)
         refresh()
     }
 
