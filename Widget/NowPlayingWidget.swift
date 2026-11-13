@@ -59,8 +59,9 @@ struct Provider: TimelineProvider {
         let e = current()
         guard let np = e.np, np.isPlaying else { return completion(Timeline(entries: [e], policy: .never)) }
         // One entry exactly when each lyric line starts; wake at the song's end in case the app's reload is throttled.
+        // While the app draws live lyrics over the panel, those entries would only waste redraws.
         let end = np.endDate
-        let starts = (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - lyricLead) }.filter { $0 > e.date && $0 < end }
+        let starts = (np.liveLyrics == true ? [] : np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - lyricLead) }.filter { $0 > e.date && $0 < end }
         let entries = [e] + starts.prefix(900).map { Entry(date: $0, np: np, art: e.art) }
         completion(Timeline(entries: entries, policy: .after(end.addingTimeInterval(1))))
     }
@@ -75,13 +76,13 @@ struct Provider: TimelineProvider {
 /// Layout: artwork top-left, title pill + controls pill top-right, lyrics panel across the bottom.
 struct NowPlayingView: View {
     let entry: Entry
-    private let pad: CGFloat = 14
-    private let gap: CGFloat = 12
+    private let pad = Layout.pad
+    private let gap = Layout.gap
     private let panel = Color.white.opacity(0.1)
 
     var body: some View {
         GeometryReader { g in
-            let side = (g.size.width - pad * 2 - gap) * 0.42
+            let side = Layout.artSide(width: g.size.width)
             VStack(spacing: gap) {
                 HStack(spacing: gap) {
                     artwork
@@ -144,37 +145,11 @@ struct NowPlayingView: View {
     }
 
     private var lyricsPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let (now, next) = lyric {
-                Text(now)
-                    .font(.system(size: 19, weight: .bold))
-                    .lineLimit(2)
-                ForEach(Array(next.enumerated()), id: \.offset) { _, line in
-                    Text(line)
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-                        .opacity(0.4)
-                }
-            } else if entry.np != nil {
-                Text("So'zlar topilmadi")
-                    .font(.system(size: 15, weight: .semibold))
-                    .opacity(0.4)
-            }
-        }
-        .minimumScaleFactor(0.8)
-        .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(panel, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    /// The line being sung at this entry's moment (♪ before the first one) and up to 3 lines after it.
-    private var lyric: (now: String, next: [String])? {
-        guard let np = entry.np, let lines = np.lyrics?.filter({ !$0.s.isEmpty }), !lines.isEmpty else { return nil }
-        let pos = np.position(at: entry.date) + lyricLead
-        let i = lines.lastIndex { $0.t <= pos }
-        let next = lines[(i.map { $0 + 1 } ?? 0)...].prefix(3).map(\.s)
-        return (i.map { lines[$0].s } ?? "♪", next)
+        // While the app draws live lyrics over this panel, it stays empty underneath.
+        LyricsText(np: entry.np?.liveLyrics == true ? nil : entry.np,
+                   pos: (entry.np?.position(at: entry.date) ?? 0) + lyricLead)
+            .background(panel, in: RoundedRectangle(cornerRadius: Layout.panelRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Layout.panelRadius, style: .continuous))
     }
 
     private func button(_ action: String, _ symbol: String, size: CGFloat, label: String) -> some View {

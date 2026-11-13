@@ -51,6 +51,16 @@ Jamoa ID'si Xcode → Settings → Accounts'da yoki [developer.apple.com/account
 
 Birinchi qo'shiqda macOS *"Music Widget wants to control Spotify"* deb so'raydi: **OK** bosing. Bu ruxsatsiz widget qo'shiqni ko'ra olmaydi.
 
+### Jonli so'zlar
+
+macOS widgetni bir necha soniyada bir marta qayta chizadi va ba'zi yangilanishlarni tashlab yuboradi. Shuning uchun widget ichidagi so'zlar orqada qoladi. Ilova so'zlarni o'zining kichik oynasida jonli, Spotify bilan bir vaqtda chizadi.
+
+1. Ilova birinchi ochilganda ish stoli o'rtasida qora panel paydo bo'ladi.
+2. Uni sichqoncha bilan widgetning so'zlar paneli ustiga torting. Yaqin kelganda o'zi joyiga yopishadi.
+3. Shundan keyin widget o'z panelini bo'sh qoldiradi, so'zlarni ilova chizadi.
+
+Panel boshqa oynalar ostida turadi va joyini eslab qoladi. Widgetni boshqa joyga ko'chirsangiz, panelni ham qaytadan ustiga torting.
+
 ## Qanday ishlaydi
 
 ```
@@ -72,6 +82,8 @@ Spotify / Music ──AppleScript──▶ MusicWidget.app (fonda, ko'rinmas)
 | Fayl | Vazifasi |
 |---|---|
 | `App/main.swift` | Fondagi ilova: pleyerni kuzatish, rasm va so'zlarni yuklash, tugma buyruqlari |
+| `App/LyricsOverlay.swift` | Widget ustidagi jonli so'zlar oynasi |
+| `Shared/Lyrics.swift` | So'zlar paneli ko'rinishi va widget o'lchamlari (ilova va widget uchun umumiy) |
 | `Widget/NowPlayingWidget.swift` | Widget ko'rinishi va tugmalar |
 | `Shared/NowPlaying.swift` | Ilova va widget orasidagi umumiy ma'lumot |
 | `project.yml` | XcodeGen loyiha tavsifi (`.xcodeproj` shundan yaratiladi) |
@@ -91,7 +103,7 @@ killall chronod
 
 **So'zlar chiqmayapti.** Qo'shiq LRCLIB'da vaqtlari bilan bo'lmasligi mumkin (ayniqsa kam tanilgan qo'shiqlar). Internet ham kerak.
 
-**So'zlar biroz kechikadi.** Widgetni qachon qayta chizishni macOS hal qiladi. Qatorlar 1 soniya oldin rejalashtiriladi, lekin to'liq aniq sinxron bo'lmaydi.
+**So'zlar orqada qolyapti.** Jonli so'zlar paneli widget ustiga yopishmagan. Uni widgetning so'zlar paneli ustiga torting (yuqoridagi "Jonli so'zlar" bo'limi).
 
 **Qo'shiq o'zi almashganda rasm yoki nom kechikib yangilanadi.** macOS fondagi ilovaga widgetni kuniga cheklangan marta yangilashga ruxsat beradi. Limit tugasa, widget keyingi yangilanishni kutib qoladi. Widgetdagi tugmalar bosilganda bu limit sarflanmaydi va widget darhol yangilanadi.
 

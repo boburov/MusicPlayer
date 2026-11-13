@@ -5,7 +5,12 @@ import WidgetKit
 /// Background agent: watches Spotify/Music, writes NowPlaying + artwork for the widget,
 /// and runs the widget's button commands (the sandboxed widget can't script other apps).
 final class Controller: NSObject {
-    private var last: NowPlaying?
+    private var last: NowPlaying? { didSet { onUpdate(last) } }
+    var onUpdate: (NowPlaying?) -> Void = { _ in }
+    /// The live lyrics window sits on the widget, so the widget leaves its panel empty and skips per-line redraws.
+    var liveLyrics = false {
+        didSet { guard liveLyrics != oldValue, last != nil else { return }; last?.liveLyrics = liveLyrics; last?.save(); reload() }
+    }
     private var preferred = "Spotify"
     private var artLoading: String?         // artKey whose download is in flight
     private var playPauseTapAt = Date.distantPast
@@ -45,7 +50,12 @@ final class Controller: NSObject {
             return
         }
         var np = pick.0
-        guard Self.changed(last, np) else { return }
+        np.liveLyrics = liveLyrics
+        guard Self.changed(last, np) else {
+            // The live lyrics need an exact clock even when the drift is too small to spend a widget reload on.
+            if let l = last, abs(l.position(at: np.updated) - np.position) > 0.3 { last?.position = np.position; last?.updated = np.updated }
+            return
+        }
         let artChanged = np.artKey != last?.artKey
         let sameTrack = last.map { ($0.title, $0.artist) == (np.title, np.artist) } ?? false
         if sameTrack { np.lyrics = last?.lyrics } else { fetchLyrics(np) }
@@ -175,6 +185,9 @@ private func selfCheck() {
     assert(Controller.changed(nil, a))
     let l = Controller.parseLRC("[ti:x]\n[01:02.00]\n[00:12.50] Salom dunyo\nbad")
     assert(l.count == 2 && l[0].t == 12.5 && l[0].s == "Salom dunyo" && l[1].t == 62 && l[1].s == "", "LRC parse")
+    // 360pt host window → 344pt widget; panel sits under the 127.7pt artwork row.
+    let p = LyricsOverlay.panel(NSRect(x: 0, y: 0, width: 360, height: 360))
+    assert(p.minX == 22 && p.minY == 22 && p.width == 316 && abs(p.height - 176.3) < 0.1, "overlay panel rect \(p)")
 }
 #endif
 
@@ -184,6 +197,10 @@ selfCheck()
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let controller = Controller()
+let overlay = LyricsOverlay()
+controller.onUpdate = { overlay.state.np = $0 }
+overlay.onSnap = { controller.liveLyrics = $0 }
 controller.start()
+overlay.snap()
 try? SMAppService.mainApp.register() // start at login so the widget buttons always work
 app.run()
