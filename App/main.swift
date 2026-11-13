@@ -7,6 +7,8 @@ import WidgetKit
 final class Controller: NSObject {
     private var last: NowPlaying?
     private var preferred = "Spotify"
+    private var artLoading: String?         // artKey whose download is in flight
+    private var playPauseTapAt = Date.distantPast
     private static let bundleIDs = ["Spotify": "com.spotify.client", "Music": "com.apple.Music"]
 
     func start() {
@@ -28,6 +30,7 @@ final class Controller: NSObject {
         guard let verb = verbs[note.object as? String ?? ""] else { return }
         // Nothing running: this launches the preferred player.
         let player = last?.player ?? preferred
+        if note.object as? String == "playpause" { playPauseTapAt = Date() }
         _ = script("tell application \"\(player)\" to \(verb)")
         // The widget waits for our next state write, so refresh fast; the player's own notification covers a slow switch.
         refresh()
@@ -44,10 +47,22 @@ final class Controller: NSObject {
         var np = pick.0
         guard Self.changed(last, np) else { return }
         let artChanged = np.artKey != last?.artKey
-        if let last, (last.title, last.artist) == (np.title, np.artist) { np.lyrics = last.lyrics } else { fetchLyrics(np) }
+        let sameTrack = last.map { ($0.title, $0.artist) == (np.title, np.artist) } ?? false
+        if sameTrack { np.lyrics = last?.lyrics } else { fetchLyrics(np) }
         last = np
-        guard artChanged else { np.save(); reload(); return }
+        guard artChanged else {
+            // While new artwork downloads, publishing would pair the new title with the old picture; the download saves.
+            guard artLoading != np.artKey else { return }
+            np.save()
+            // A widget play/pause tap already redrew the widget for free; don't spend the daily reload budget on it.
+            if !(sameTrack && Date().timeIntervalSince(playPauseTapAt) < 2) { reload() }
+            return
+        }
+        artLoading = np.artKey
         loadArt(np.player, pick.1) { data in
+            // Skipping fast starts several downloads; a late one for an earlier song must not overwrite the current art.
+            guard self.last?.artKey == np.artKey else { return }
+            self.artLoading = nil
             if let data { try? data.write(to: Shared.artURL, options: .atomic) }
             else { try? FileManager.default.removeItem(at: Shared.artURL) }
             self.last?.save(); self.reload()
@@ -142,7 +157,7 @@ final class Controller: NSObject {
     /// Reload the widget only on a real change: new track, play/pause, or a seek (>3s off the expected position).
     static func changed(_ old: NowPlaying?, _ new: NowPlaying) -> Bool {
         guard let old else { return true }
-        if (old.player, old.title, old.artist, old.isPlaying) != (new.player, new.title, new.artist, new.isPlaying) { return true }
+        if (old.player, old.title, old.artist, old.isPlaying, old.artKey) != (new.player, new.title, new.artist, new.isPlaying, new.artKey) { return true }
         return abs(old.position(at: new.updated) - new.position) > 3
     }
 }
@@ -155,6 +170,7 @@ private func selfCheck() {
     assert(!Controller.changed(a, b), "steady playback must not reload")
     b.position = 90; assert(Controller.changed(a, b), "seek must reload")
     b = a; b.isPlaying = false; assert(Controller.changed(a, b), "pause must reload")
+    b = a; b.artKey = "new-cover"; assert(Controller.changed(a, b), "artwork change must reload")
     b = a; b.title = "B"; assert(Controller.changed(a, b), "new track must reload")
     assert(Controller.changed(nil, a))
     let l = Controller.parseLRC("[ti:x]\n[01:02.00]\n[00:12.50] Salom dunyo\nbad")

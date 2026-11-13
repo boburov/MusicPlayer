@@ -93,6 +93,8 @@ killall chronod
 
 **So'zlar biroz kechikadi.** Widgetni qachon qayta chizishni macOS hal qiladi. Qatorlar 1 soniya oldin rejalashtiriladi, lekin to'liq aniq sinxron bo'lmaydi.
 
+**Qo'shiq o'zi almashganda rasm yoki nom kechikib yangilanadi.** macOS fondagi ilovaga widgetni kuniga cheklangan marta yangilashga ruxsat beradi. Limit tugasa, widget keyingi yangilanishni kutib qoladi. Widgetdagi tugmalar bosilganda bu limit sarflanmaydi va widget darhol yangilanadi.
+
 **Bundle ID band degan xato.** Bundle ID butun Apple bo'yicha yagona bo'lishi kerak. Boshqasini bering:
 
 ```bash
