@@ -58,6 +58,12 @@ final class LiveCard: NSObject, NSWindowDelegate {
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.snap() }
     }
 
+    /// A covered window isn't drawn, and on uncovering it showed the line from when it was covered
+    /// until the next line started. Redraw at the current moment as soon as it's visible again.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        if window.occlusionState.contains(.visible) { state.objectWillChange.send() }
+    }
+
     func windowDidMove(_ notification: Notification) {
         settle?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.snap() }
@@ -117,8 +123,9 @@ private struct CardView: View {
 
     var body: some View {
         // Redraws exactly when a lyric line starts (not on a fixed tick, which kept the CPU busy).
-        TimelineView(.explicit(lineStarts)) { t in
-            PlayerCard(np: state.np, art: state.art, pos: (state.np?.position(at: t.date) ?? 0) + state.lead) { action, icon in
+        TimelineView(.explicit(lineStarts)) { _ in
+            // The real clock, not the entry date: an entry can be drawn late, e.g. right after uncovering.
+            PlayerCard(np: state.np, art: state.art, pos: (state.np?.position(at: Date()) ?? 0) + state.lead) { action, icon in
                 AnyView(Button { send(action) } label: { icon })
             }
         }
