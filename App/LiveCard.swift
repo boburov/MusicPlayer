@@ -118,7 +118,7 @@ private struct CardView: View {
     private var lineStarts: [Date] {
         guard let np = state.np, np.isPlaying else { return [Date()] }
         let now = Date()
-        return [now] + (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - state.lead) }.filter { $0 > now }
+        return [now] + np.segments.map { np.startDate.addingTimeInterval($0.start - state.lead) }.filter { $0 > now }
     }
 
     var body: some View {

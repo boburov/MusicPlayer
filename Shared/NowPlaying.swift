@@ -41,3 +41,37 @@ struct Lyric: Codable, Equatable {
     var t: Double   // seconds into the song
     var s: String   // empty = instrumental gap
 }
+
+/// A stretch of the song shown as one karaoke row: a sung line, or music between lines (`text == nil`).
+struct LyricSegment: Equatable {
+    var text: String?
+    var start: Double
+    var end: Double
+}
+
+extension NowPlaying {
+    /// LRC only says when each line starts, so a line's sung length is estimated from the song's own pace
+    /// (median seconds per character); the rest of the gap before the next line becomes a music segment.
+    var segments: [LyricSegment] {
+        let all = lyrics ?? []
+        let lines = all.filter { !$0.s.isEmpty }
+        guard !lines.isEmpty else { return [] }
+        let next = { (l: Lyric) in all.first { $0.t > l.t }?.t ?? max(self.duration, l.t) }
+        let paces = lines.map { (next($0) - $0.t) / Double($0.s.count) }.sorted()
+        let pace = min(max(paces[(paces.count - 1) / 2], 0.04), 0.25)
+        let minMusic = 3.0  // shorter breaks just hold the finished line
+        var out: [LyricSegment] = []
+        if lines[0].t >= minMusic { out.append(LyricSegment(text: nil, start: 0, end: lines[0].t)) }
+        for l in lines {
+            let gapEnd = next(l)
+            let sung = min(gapEnd, l.t + Double(l.s.count) * pace * 1.15)
+            if gapEnd - sung >= minMusic {
+                out.append(LyricSegment(text: l.s, start: l.t, end: sung))
+                out.append(LyricSegment(text: nil, start: sung, end: gapEnd))
+            } else {
+                out.append(LyricSegment(text: l.s, start: l.t, end: gapEnd))
+            }
+        }
+        return out
+    }
+}

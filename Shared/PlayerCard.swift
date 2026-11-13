@@ -153,33 +153,26 @@ struct KaraokeLyrics: View {
     let pos: Double
 
     var body: some View {
-        let lines = np.lyrics?.filter { !$0.s.isEmpty } ?? []
-        let cur = lines.lastIndex { $0.t <= pos }
-        let from = cur ?? -1
+        let segs = np.segments
+        let cur = segs.lastIndex { $0.start <= pos }
+        // The current row (a line or music), then the next 3 lines.
+        let shown = (cur.map { [$0] } ?? []) + segs.indices.filter { $0 > (cur ?? -1) && segs[$0].text != nil }.prefix(3)
         VStack(alignment: .leading, spacing: 8) {
-            if cur == nil {
-                Text("♪").font(.system(size: 19, weight: .bold)).transition(.glide)
-            }
-            ForEach(lines.indices.filter { $0 >= from && $0 <= from + 3 }, id: \.self) { k in
-                // A stable container per line: becoming current crossfades in place; only arriving/leaving glides.
+            ForEach(shown, id: \.self) { k in
+                // A stable container per row: becoming current crossfades in place; only arriving/leaving glides.
                 VStack(alignment: .leading, spacing: 0) {
                     if k == cur {
                         // A seek or play/pause restarts the fill from the right spot.
-                        KaraokeLine(line: lines[k], end: lineEnd(lines[k]), pos: pos, playing: np.isPlaying)
+                        KaraokeLine(seg: segs[k], pos: pos, playing: np.isPlaying)
                             .id("\(np.isPlaying)|\(Int(np.startDate.timeIntervalSince1970 * 10))")
                     } else {
-                        Text(lines[k].s).font(.system(size: 15, weight: .semibold)).lineLimit(1).opacity(0.4)
+                        Text(segs[k].text ?? "").font(.system(size: 15, weight: .semibold)).lineLimit(1).opacity(0.4)
                     }
                 }
                 .transition(.glide)
             }
         }
         .animation(.spring(response: 0.55, dampingFraction: 0.9), value: cur)
-    }
-
-    /// Sung until the next timestamp (an empty one marks a pause), capped so a long break doesn't stall it.
-    private func lineEnd(_ l: Lyric) -> Double {
-        min(np.lyrics?.first { $0.t > l.t }?.t ?? np.duration, l.t + 8)
     }
 }
 
@@ -192,25 +185,24 @@ private extension AnyTransition {
     }
 }
 
-/// One line, words laid out like text and wrapped onto as many rows as needed. The line's time is
-/// shared out by word length, since LRC files only time whole lines.
+/// One row filled word by word, wrapped onto as many rows as needed. The row's time is shared out by
+/// word length; a music row is a few notes filling across the break.
 struct KaraokeLine: View {
-    let line: Lyric
-    let end: Double
+    let seg: LyricSegment
     let pos: Double
     let playing: Bool
 
     var body: some View {
-        let words = line.s.split(separator: " ").map(String.init)
-        let span = max(end - line.t, 0.1)
+        let words = (seg.text ?? "♪ ♪ ♪").split(separator: " ").map(String.init)
+        let span = max(seg.end - seg.start, 0.1)
         let total = Double(words.reduce(0) { $0 + $1.count + 1 })
-        var at = line.t
+        var at = seg.start
         let timed = words.map { w -> (String, Double, Double) in
             let d = span * Double(w.count + 1) / total
             defer { at += d }
             return (w, at, d)
         }
-        return Flow {
+        return Flow(spacing: seg.text == nil ? 10 : 5) {
             ForEach(Array(timed.enumerated()), id: \.offset) { _, t in
                 KaraokeWord(word: t.0, start: t.1, duration: t.2, pos: pos, playing: playing)
             }

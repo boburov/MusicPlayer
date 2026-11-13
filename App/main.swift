@@ -206,6 +206,14 @@ private func selfCheck() {
     assert(Controller.changed(nil, a))
     let l = Controller.parseLRC("[ti:x]\n[01:02.00]\n[00:12.50] Salom dunyo\nbad")
     assert(l.count == 2 && l[0].t == 12.5 && l[0].s == "Salom dunyo" && l[1].t == 62 && l[1].s == "", "LRC parse")
+    // Pace 0.1 s/char: "aaaaaaaaaa" is sung in ~1.15s, so the 10s break after it shows as music.
+    var k = a; k.duration = 40
+    k.lyrics = [Lyric(t: 5, s: "aaaaaaaaaa"), Lyric(t: 6, s: "bbbbbbbbbb"), Lyric(t: 7, s: "cccccccccc"), Lyric(t: 20, s: "dd")]
+    let seg = k.segments
+    assert(seg.first == LyricSegment(text: nil, start: 0, end: 5), "intro is music")
+    assert(seg[1] == LyricSegment(text: "aaaaaaaaaa", start: 5, end: 6), "a short gap holds the line")
+    assert(seg[3].text == "cccccccccc" && abs(seg[3].end - 8.15) < 0.01 && seg[4] == LyricSegment(text: nil, start: seg[3].end, end: 20), "long gap: line then music \(seg)")
+    assert(seg.last?.text == nil && seg.last?.end == 40, "outro is music")
     assert(LiveCard.widgetRect(NSRect(x: 0, y: 0, width: 360, height: 360)) == NSRect(x: 8, y: 8, width: 344, height: 344), "widget inside its host window")
 }
 #endif
