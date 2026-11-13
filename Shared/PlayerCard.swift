@@ -10,6 +10,10 @@ enum Layout {
     static func artSide(width: CGFloat) -> CGFloat { (width - pad * 2 - gap) * 0.42 }
 }
 
+/// Lines show this much before they're sung, like Spotify does, so they can be read in time.
+/// LRCLIB timestamps mark when singing starts, and some files run a second or two late.
+let lyricLead: TimeInterval = 1.0
+
 /// The line being sung at `pos` (♪ before the first one) and up to 3 lines after it.
 struct LyricsText: View {
     let np: NowPlaying?

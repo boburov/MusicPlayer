@@ -87,13 +87,13 @@ private struct CardView: View {
     private var lineStarts: [Date] {
         guard let np = state.np, np.isPlaying else { return [Date()] }
         let now = Date()
-        return [now] + (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t) }.filter { $0 > now }
+        return [now] + (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - lyricLead) }.filter { $0 > now }
     }
 
     var body: some View {
         // Redraws exactly when a lyric line starts (not on a fixed tick, which kept the CPU busy).
         TimelineView(.explicit(lineStarts)) { t in
-            PlayerCard(np: state.np, art: state.art, pos: state.np?.position(at: t.date) ?? 0) { action, icon in
+            PlayerCard(np: state.np, art: state.art, pos: (state.np?.position(at: t.date) ?? 0) + lyricLead) { action, icon in
                 AnyView(Button { send(action) } label: { icon })
             }
         }

@@ -42,8 +42,6 @@ struct Entry: TimelineEntry {
     var live = false
 }
 
-/// macOS draws widget entries a little after their date, so lyric lines are scheduled this much early.
-let lyricLead: TimeInterval = 1.0
 
 struct Provider: TimelineProvider {
     private static let sample = NowPlaying(player: "Spotify", title: "Qo'shiq nomi", artist: "Ijrochi", album: "Albom",
