@@ -1,0 +1,115 @@
+# Music Widget
+
+macOS ish stoli uchun musiqa widgeti. Spotify yoki Apple Music'da hozir chalinayotgan qo'shiqni ko'rsatadi va boshqaradi:
+
+- albom rasmi (chap tepada);
+- qo'shiq nomi va ijrochi;
+- ⏮ ⏯ ⏭ tugmalari;
+- qo'shiq so'zlari: hozirgi qator qalin, keyingi 3 qator xira.
+
+Ikki o'lchamda ishlaydi: **Large** (kvadrat) va **Extra Large Portrait** (tik, macOS 27+).
+
+## Talablar
+
+| Nima | Izoh |
+|---|---|
+| macOS 15 yoki yangisi | Tik o'lcham faqat macOS 27+ da |
+| Xcode | App Store'dan, bir marta ochib litsenziyani qabul qiling |
+| Xcode'da Apple ID | Xcode → Settings → Accounts → `+` → Apple ID |
+| Homebrew | [brew.sh](https://brew.sh). `install.sh` u orqali `xcodegen` o'rnatadi |
+| Spotify yoki Apple Music | Ikkalasi bo'lsa, qaysi biri chalayotgan bo'lsa, o'shani ko'rsatadi |
+
+Xcode'da **Apple Development** sertifikati bo'lishi kerak. Bo'lmasa: Xcode → Settings → Accounts → akkauntingiz → **Manage Certificates…** → `+` → **Apple Development**.
+
+## O'rnatish
+
+```bash
+git clone https://github.com/boburov/MusicPlayer.git
+cd MusicPlayer
+./install.sh
+```
+
+Skript nimalarni qiladi:
+
+1. Jamoa ID'ingizni Apple Development sertifikatingizdan o'qiydi.
+2. Shu jamoa uchun loyihani yaratadi va Release qilib yig'adi.
+3. `/Applications/MusicWidget.app` ga o'rnatadi va ishga tushiradi.
+
+Jamoa ID'sini qo'lda berish (bir nechta akkaunt bo'lsa):
+
+```bash
+DEVELOPMENT_TEAM=ABCDE12345 ./install.sh
+```
+
+Jamoa ID'si Xcode → Settings → Accounts'da yoki [developer.apple.com/account](https://developer.apple.com/account) → Membership'da yozilgan.
+
+## Widgetni ish stoliga qo'yish
+
+1. Ish stolida o'ng tugma → **Edit Widgets…**
+2. Qidiruvga **MusicWidget** deb yozing.
+3. **Large** yoki **Extra Large Portrait** o'lchamini tanlab, ish stoliga torting va **Done** bosing.
+
+Birinchi qo'shiqda macOS *"Music Widget wants to control Spotify"* deb so'raydi: **OK** bosing. Bu ruxsatsiz widget qo'shiqni ko'ra olmaydi.
+
+## Qanday ishlaydi
+
+```
+Spotify / Music ──AppleScript──▶ MusicWidget.app (fonda, ko'rinmas)
+                                   │  qo'shiq, rasm, so'zlarni yozadi
+                                   ▼
+                          umumiy papka (App Group)
+                                   │
+                                   ▼
+                         Widget (ish stolida chiziladi)
+                                   │  tugma bosildi
+                                   └──buyruq──▶ MusicWidget.app ──▶ pleyer
+```
+
+- Widget macOS sandbox ichida ishlaydi, boshqa ilovalarni o'zi boshqara olmaydi. Shuning uchun fonda `MusicWidget.app` ishlaydi: u qo'shiqni kuzatadi va tugma buyruqlarini pleyerga yetkazadi.
+- Ilova kompyuter yoqilganda o'zi ishga tushadi (Login Items).
+- Qo'shiq so'zlari bepul [LRCLIB](https://lrclib.net) xizmatidan olinadi. Spotify'ning o'z so'zlarini tashqaridan olib bo'lmaydi.
+
+| Fayl | Vazifasi |
+|---|---|
+| `App/main.swift` | Fondagi ilova: pleyerni kuzatish, rasm va so'zlarni yuklash, tugma buyruqlari |
+| `Widget/NowPlayingWidget.swift` | Widget ko'rinishi va tugmalar |
+| `Shared/NowPlaying.swift` | Ilova va widget orasidagi umumiy ma'lumot |
+| `project.yml` | XcodeGen loyiha tavsifi (`.xcodeproj` shundan yaratiladi) |
+| `install.sh` | Yig'ish va o'rnatish |
+
+## Muammolar
+
+**Widget galereyada yo'q.** Ilovani bir marta oching: `open /Applications/MusicWidget.app`. Keyin widget xizmatini qayta ishga tushiring:
+
+```bash
+killall chronod
+```
+
+**Kod o'zgargandan keyin ham eski ko'rinish chiqyapti.** macOS widgetni versiya raqami bo'yicha keshlaydi. `project.yml` da `CURRENT_PROJECT_VERSION` ni oshiring, `./install.sh` ni qayta ishga tushiring va widgetni ish stolidan olib, qaytadan qo'shing.
+
+**Qo'shiq ko'rinmayapti.** Pleyerni boshqarish ruxsatini rad etgan bo'lsangiz, uni qayta yoqing: System Settings → Privacy & Security → Automation → Music Widget → Spotify / Music.
+
+**So'zlar chiqmayapti.** Qo'shiq LRCLIB'da vaqtlari bilan bo'lmasligi mumkin (ayniqsa kam tanilgan qo'shiqlar). Internet ham kerak.
+
+**So'zlar biroz kechikadi.** Widgetni qachon qayta chizishni macOS hal qiladi. Qatorlar 1 soniya oldin rejalashtiriladi, lekin to'liq aniq sinxron bo'lmaydi.
+
+**Bundle ID band degan xato.** Bundle ID butun Apple bo'yicha yagona bo'lishi kerak. Boshqasini bering:
+
+```bash
+BUNDLE_ID=com.ismingiz.musicwidget ./install.sh
+```
+
+## O'chirish
+
+```bash
+pkill -x MusicWidget
+rm -rf /Applications/MusicWidget.app
+```
+
+Login Items'dan ham olib tashlang: System Settings → General → Login Items.
+
+## Maxfiylik
+
+- Qo'shiq nomi va ijrochi so'zlarni topish uchun `lrclib.net` ga yuboriladi.
+- Spotify albom rasmi Spotify serveridan yuklanadi.
+- Boshqa hech narsa yuborilmaydi.

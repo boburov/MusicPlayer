@@ -1,0 +1,58 @@
+# Generated into MusicWidget.xcodeproj by XcodeGen. Use ./install.sh, which sets
+# DEVELOPMENT_TEAM (your Apple team ID) and BUNDLE_ID (must be unique per team).
+name: MusicWidget
+options:
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.4"
+    CURRENT_PROJECT_VERSION: "5"
+targets:
+  MusicWidget:
+    type: application
+    platform: macOS
+    sources: [App, Shared]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Music Widget
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSUIElement: true
+        AppGroup: "$(TeamIdentifierPrefix)uz.musicwidget"
+        NSAppleEventsUsageDescription: "Widget Spotify va Music'dagi qo'shiqni ko'rsatishi va boshqarishi uchun."
+    entitlements:
+      path: App/App.entitlements
+      properties:
+        com.apple.security.application-groups: ["$(TeamIdentifierPrefix)uz.musicwidget"]
+        com.apple.security.automation.apple-events: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${BUNDLE_ID}
+    dependencies:
+      - target: NowPlayingWidget
+  NowPlayingWidget:
+    type: app-extension
+    platform: macOS
+    sources: [Widget, Shared]
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Musiqa
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        AppGroup: "$(TeamIdentifierPrefix)uz.musicwidget"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget/Widget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: ["$(TeamIdentifierPrefix)uz.musicwidget"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${BUNDLE_ID}.widget
