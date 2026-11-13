@@ -8,8 +8,8 @@ final class LiveState: ObservableObject {
 }
 
 /// macOS redraws a desktop widget only every few seconds, skips timeline entries, and stops honoring the
-/// app's reloads once a small daily budget is spent. So the app draws a live copy of the widget in its
-/// own window, laid exactly over the real one; the widget underneath is only a fallback.
+/// app's reloads once a small daily budget is spent. So the app draws the widget's content live in its
+/// own window, laid exactly over the real widget, which then shows only its background.
 final class LiveCard: NSObject, NSWindowDelegate {
     let state = LiveState()
     var onSnap: (Bool) -> Void = { _ in }
@@ -90,7 +90,7 @@ private struct CardView: View {
                 AnyView(Button { send(action) } label: { icon })
             }
         }
-        // Covers the widget's corners (measured ~27pt) so its stale content never shows around the edge.
-        .background(Layout.background, in: RoundedRectangle(cornerRadius: 28))
+        // Snapped, the widget's own background (glass or tinted, whatever the desktop uses) shows through.
+        .background(state.snapped ? Color.clear : Layout.background, in: RoundedRectangle(cornerRadius: 27))
     }
 }

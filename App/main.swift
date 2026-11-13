@@ -8,14 +8,23 @@ final class Controller: NSObject {
     private var last: NowPlaying? { didSet { onUpdate(last) } }
     var onUpdate: (NowPlaying?) -> Void = { _ in }
     var onArt: (NSImage?) -> Void = { _ in }
-    /// The app's live copy covers the widget, so widget reloads (a small daily budget) would be wasted.
-    var live = false { didSet { if !live && oldValue { reload() } } }
+    /// The app's live card covers the widget: the widget then draws only its background, and further
+    /// reloads (a small daily budget) would be wasted.
+    var live = false {
+        didSet {
+            guard live != oldValue else { return }
+            if live { FileManager.default.createFile(atPath: Shared.liveURL.path, contents: nil) }
+            else { try? FileManager.default.removeItem(at: Shared.liveURL) }
+            WidgetCenter.shared.reloadTimelines(ofKind: Shared.kind)
+        }
+    }
     private var preferred = "Spotify"
     private var artLoading: String?         // artKey whose download is in flight
     private var playPauseTapAt = Date.distantPast
     private static let bundleIDs = ["Spotify": "com.spotify.client", "Music": "com.apple.Music"]
 
     func start() {
+        try? FileManager.default.removeItem(at: Shared.liveURL) // left by a crash; the card sets it again once snapped
         let dnc = DistributedNotificationCenter.default()
         dnc.addObserver(self, selector: #selector(spotifyChanged), name: .init("com.spotify.client.PlaybackStateChanged"), object: nil, suspensionBehavior: .deliverImmediately)
         dnc.addObserver(self, selector: #selector(musicChanged), name: .init("com.apple.Music.playerInfo"), object: nil, suspensionBehavior: .deliverImmediately)

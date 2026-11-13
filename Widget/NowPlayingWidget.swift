@@ -39,6 +39,7 @@ struct Entry: TimelineEntry {
     let date: Date
     let np: NowPlaying?
     let art: NSImage?
+    var live = false
 }
 
 /// macOS draws widget entries a little after their date, so lyric lines are scheduled this much early.
@@ -57,7 +58,7 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
         let e = current()
-        guard let np = e.np, np.isPlaying else { return completion(Timeline(entries: [e], policy: .never)) }
+        guard let np = e.np, np.isPlaying, !e.live else { return completion(Timeline(entries: [e], policy: .never)) }
         // One entry exactly when each lyric line starts; wake at the song's end in case the app's reload is throttled.
         let end = np.endDate
         let starts = (np.lyrics ?? []).map { np.startDate.addingTimeInterval($0.t - lyricLead) }.filter { $0 > e.date && $0 < end }
@@ -66,7 +67,8 @@ struct Provider: TimelineProvider {
     }
 
     private func current() -> Entry {
-        Entry(date: Date(), np: NowPlaying.load(), art: NSImage(contentsOf: Shared.artURL))
+        Entry(date: Date(), np: NowPlaying.load(), art: NSImage(contentsOf: Shared.artURL),
+              live: FileManager.default.fileExists(atPath: Shared.liveURL.path))
     }
 }
 
@@ -76,8 +78,14 @@ struct NowPlayingView: View {
     let entry: Entry
 
     var body: some View {
-        PlayerCard(np: entry.np, art: entry.art, pos: (entry.np?.position(at: entry.date) ?? 0) + lyricLead) { action, icon in
-            AnyView(Button(intent: PlayerCommand(action)) { icon })
+        Group {
+            if entry.live {
+                Color.clear // the app's live card draws on top of this widget's system (glass) background
+            } else {
+                PlayerCard(np: entry.np, art: entry.art, pos: (entry.np?.position(at: entry.date) ?? 0) + lyricLead) { action, icon in
+                    AnyView(Button(intent: PlayerCommand(action)) { icon })
+                }
+            }
         }
         .containerBackground(for: .widget) { Layout.background }
     }

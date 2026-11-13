@@ -8,6 +8,8 @@ enum Shared {
     static var dir: URL { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)! }
     static var stateURL: URL { dir.appendingPathComponent("state.json") }
     static var artURL: URL { dir.appendingPathComponent("art.jpg") }
+    /// Exists while the app's live card covers the widget; the widget then draws only its own background.
+    static var liveURL: URL { dir.appendingPathComponent("live") }
 }
 
 /// What the host app last saw in Spotify / Music. Written by the app, read by the widget.
